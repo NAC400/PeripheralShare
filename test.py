@@ -1,0 +1,1 @@
+﻿print("PeripheralShare - Dependency Test")
