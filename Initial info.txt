@@ -1,0 +1,34 @@
+Goal 1 Summary 
+Problem: Two separate systems, but 1 set of perhipherals
+
+Solution: Make a share application that can be both IP or thorugh WIFI
+
+✅ Requirements:
+
+1. Share Mouse input from PC to laptop and laptop to PC
+
+2. Share Keyboard input from PC to laptop and laptop to PC
+
+3. Sharable files, i.e. able to copy items & files to clipboard and share through devices
+
+4. Share Audio input and output from PC to laptop and laptop to PC
+
+5. Redundancy that if IP connection fails, to fall back to WIFI
+
+
+Goal 2 Summary
+Problem: Discord doesn’t work well in your region, even with browser VPNs.
+
+Solution: Run Discord with a system-wide VPN on a laptop, and connect the audio input/output between laptop and desktop, so you can hear and speak from your desktop while using Discord on the laptop.
+
+✅ Requirements
+To pull this off, you’ll need:
+
+1. Audio routing from laptop → desktop (output)
+
+2. Audio routing from desktop → laptop (mic/input)
+
+3. A VPN on your laptop only
+
+4. Optional: Control over which audio source is active or muted
+
