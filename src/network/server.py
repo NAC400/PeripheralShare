@@ -18,7 +18,7 @@ class PeripheralServer(QObject):
     client_disconnected = pyqtSignal(dict) # client_info
     data_received = pyqtSignal(dict)       # message
     
-    def __init__(self, config, port: int = 8888):
+    def __init__(self, config, port: int = 12345):
         """Initialize the server."""
         super().__init__()
         self.config = config

@@ -315,7 +315,8 @@ class MainWindow(QWidget):
         print("Starting seamless desktop server...")
         self.log_message("Starting server...")
         
-        success = self.app_manager.start_as_server()
+        port = self.port_spinbox.value()
+        success = self.app_manager.start_as_server(port)
         if success:
             self.is_server_running = True
             self.start_server_btn.setText("Stop Server")
@@ -323,7 +324,7 @@ class MainWindow(QWidget):
             self.connection_status.setText("Server Running")
             self.connection_status.setStyleSheet("color: green; font-weight: bold;")
             self.network_indicator.setStyleSheet("color: green; font-size: 16px;")
-            self.server_ip_label.setText(f"Server running on port {self.port_spinbox.value()}")
+            self.server_ip_label.setText(f"Server running on port {port}")
             self.status_label.setText("Server active - Move mouse to edges to switch devices")
             self.log_message("Server started successfully!")
         else:
@@ -331,7 +332,7 @@ class MainWindow(QWidget):
             
     def stop_server(self):
         self.log_message("Stopping server...")
-        # Add server stop logic here
+        self.app_manager.stop_server()
         self.is_server_running = False
         self.start_server_btn.setText("Start Seamless Desktop Server")
         self.start_server_btn.setStyleSheet("")
@@ -350,14 +351,30 @@ class MainWindow(QWidget):
             return
             
         self.log_message(f"Connecting to server at {server_ip}...")
-        # Add client connection logic here
+        port = self.port_spinbox.value()
+        
+        # Disable button during connection attempt
+        self.connect_btn.setEnabled(False)
+        self.connect_btn.setText("Connecting...")
+        
+        success = self.app_manager.connect_to_server(server_ip, port)
+        
+        # Re-enable button
+        self.connect_btn.setEnabled(True)
+        
+        if success:
+            self.connect_btn.setText("Disconnect")
+            self.log_message(f"Successfully connected to {server_ip}:{port}")
+        else:
+            self.connect_btn.setText("Connect")
+            self.log_message(f"Failed to connect to {server_ip}:{port}")
         
     @pyqtSlot()
     def refresh_devices(self):
         self.log_message("Refreshing device list...")
         self.available_devices.clear()
         self.available_devices.addItem("Scanning for devices...")
-        # Add device discovery logic here
+        # TODO: Implement device discovery using zeroconf
         
     @pyqtSlot()
     def disconnect_device(self):
@@ -365,12 +382,13 @@ class MainWindow(QWidget):
         if current_item:
             device_name = current_item.text()
             self.log_message(f"Disconnecting from {device_name}")
-            # Add disconnect logic here
+            self.app_manager.disconnect_from_server()
+            self.connect_btn.setText("Connect")
             
     @pyqtSlot()
     def save_settings(self):
         self.log_message("Settings saved")
-        # Add settings save logic here
+        # TODO: Save settings to config file
         
     @pyqtSlot()
     def clear_logs(self):
