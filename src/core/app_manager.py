@@ -17,6 +17,7 @@ class AppManager(QObject):
         self.server = None
         self.client = None
         self.is_server_mode = False
+        self.is_active_device = True  # Only the active device captures/sends input
         self.logger.info("AppManager initialized")
     
     def start_as_server(self, port=8888):
@@ -35,15 +36,16 @@ class AppManager(QObject):
             self.server.client_disconnected.connect(self._on_client_disconnected)
             self.server.data_received.connect(self._on_server_data_received)
             
-            # Start input capture for sharing peripherals
-            if self.input_manager.start_capture():
-                self.logger.info("Input capture started")
-                # Connect input signals to send to clients
-                self.input_manager.input_captured.connect(self._send_input_to_clients)
-            else:
-                self.logger.warning("Failed to start input capture")
+            # Start input capture for sharing peripherals (only if active)
+            if self.is_active_device:
+                if self.input_manager.start_capture():
+                    self.logger.info("Input capture started")
+                    self.input_manager.input_captured.connect(self._send_input_to_clients)
+                else:
+                    self.logger.warning("Failed to start input capture")
             
             # Start edge tracking for seamless desktop
+            self.desktop_manager.edge_reached.connect(self._on_edge_reached)
             self.desktop_manager.start_edge_tracking()
             
             self.is_server_mode = True
@@ -63,7 +65,6 @@ class AppManager(QObject):
             self.server.stop()
             self.server = None
         
-        # Stop input capture
         self.input_manager.stop_capture()
         
         if self.desktop_manager.mouse_listener:
@@ -89,11 +90,12 @@ class AppManager(QObject):
             # Attempt connection
             success = self.client.connect(host, port)
             if success:
-                # Start input capture for client mode
-                self.start_client_input_capture()
-                
+                self.is_active_device = False  # Client starts as inactive
                 self.connection_status_changed.emit(True, f"Connected to {host}:{port}")
                 self.logger.info(f"Successfully connected to {host}:{port}")
+                # Start edge tracking for seamless desktop
+                self.desktop_manager.edge_reached.connect(self._on_edge_reached)
+                self.desktop_manager.start_edge_tracking()
                 return True
             else:
                 self.connection_status_changed.emit(False, f"Failed to connect to {host}:{port}")
@@ -107,9 +109,7 @@ class AppManager(QObject):
     
     def disconnect_from_server(self):
         """Disconnect from server."""
-        # Stop client input capture
-        self.stop_client_input_capture()
-        
+        self.input_manager.stop_capture()
         if self.client:
             self.client.disconnect()
             self.client = None
@@ -118,72 +118,73 @@ class AppManager(QObject):
         self.logger.info("Disconnected from server")
     
     def _on_client_connected(self, client_info):
-        """Handle client connection to our server."""
         self.logger.info(f"Client connected: {client_info}")
-        
+    
     def _on_client_disconnected(self, client_info):
-        """Handle client disconnection from our server."""
         self.logger.info(f"Client disconnected: {client_info}")
-        
+    
     def _on_server_data_received(self, message):
-        """Handle data received by our server."""
         self.logger.debug(f"Server received: {message}")
-        # Process input events from clients
         try:
             msg_type = message.get('type')
-            if msg_type == 'input':
+            if msg_type == 'handoff':
+                # Become inactive, stop capturing input
+                self.is_active_device = False
+                self.input_manager.stop_capture()
+                self.logger.info("Received handoff: now inactive")
+            elif msg_type == 'input' and self.is_active_device:
                 event_type = message.get('event_type')
                 data = message.get('data', {})
-                # Inject input locally (server receives input from client)
                 self.input_manager.inject_input(event_type, data)
             elif msg_type == 'ping':
-                # Respond to ping to keep connection alive
                 response = {'type': 'pong', 'timestamp': message.get('timestamp')}
                 self.server.broadcast_message(response)
         except Exception as e:
             self.logger.error(f"Error processing server message: {e}")
-        
+    
     def _on_connected_to_server(self, server_info):
-        """Handle successful connection to server."""
         self.logger.info(f"Connected to server: {server_info}")
-        
+    
     def _on_disconnected_from_server(self, reason):
-        """Handle disconnection from server."""
         self.logger.warning(f"Disconnected from server: {reason}")
         self.connection_status_changed.emit(False, f"Disconnected: {reason}")
-        
+    
     def _on_client_data_received(self, message):
-        """Handle data received from server."""
         self.logger.debug(f"Client received: {message}")
-        # Process input events from server
         try:
             msg_type = message.get('type')
-            if msg_type == 'input':
+            if msg_type == 'handoff':
+                # Become active, start capturing input
+                self.is_active_device = True
+                if self.input_manager.start_capture():
+                    self.input_manager.input_captured.connect(self.send_input_to_server)
+                self.logger.info("Received handoff: now active")
+            elif msg_type == 'input' and self.is_active_device:
                 event_type = message.get('event_type')
                 data = message.get('data', {})
-                # Inject input locally (client receives input from server)
                 self.input_manager.inject_input(event_type, data)
             elif msg_type == 'pong':
-                # Connection is alive
                 self.logger.debug("Received pong from server")
         except Exception as e:
             self.logger.error(f"Error processing client message: {e}")
     
-    def get_server_info(self):
-        """Get server information."""
-        if self.server:
-            return self.server.get_info()
-        return None
-    
-    def get_client_info(self):
-        """Get client information."""
-        if self.client:
-            return self.client.get_info()
-        return None
+    def _on_edge_reached(self, edge):
+        """Handle edge reached event for handoff."""
+        if self.is_active_device:
+            # Send handoff to the other device
+            if self.is_server_mode and self.server:
+                self.server.broadcast_message({'type': 'handoff', 'edge': edge})
+                self.is_active_device = False
+                self.input_manager.stop_capture()
+                self.logger.info(f"Sent handoff to client (edge: {edge})")
+            elif not self.is_server_mode and self.client:
+                self.client.send_message({'type': 'handoff', 'edge': edge})
+                self.is_active_device = False
+                self.input_manager.stop_capture()
+                self.logger.info(f"Sent handoff to server (edge: {edge})")
     
     def _send_input_to_clients(self, event_type, data):
-        """Send input event to connected clients."""
-        if self.server and self.is_server_mode:
+        if self.server and self.is_server_mode and self.is_active_device:
             message = {
                 'type': 'input',
                 'event_type': event_type,
@@ -193,8 +194,7 @@ class AppManager(QObject):
             self.logger.debug(f"Sent input to clients: {event_type}")
     
     def send_input_to_server(self, event_type, data):
-        """Send input event to server (from client)."""
-        if self.client:
+        if self.client and self.is_active_device:
             message = {
                 'type': 'input',
                 'event_type': event_type,
@@ -203,24 +203,7 @@ class AppManager(QObject):
             self.client.send_message(message)
             self.logger.debug(f"Sent input to server: {event_type}")
     
-    def start_client_input_capture(self):
-        """Start input capture for client mode."""
-        if self.input_manager.start_capture():
-            self.logger.info("Client input capture started")
-            # Connect input signals to send to server
-            self.input_manager.input_captured.connect(self.send_input_to_server)
-            return True
-        else:
-            self.logger.warning("Failed to start client input capture")
-            return False
-    
-    def stop_client_input_capture(self):
-        """Stop input capture for client mode."""
-        self.input_manager.stop_capture()
-        self.logger.info("Client input capture stopped")
-
     def shutdown(self):
-        """Shutdown the application."""
         if self.server:
             self.stop_server()
         if self.client:

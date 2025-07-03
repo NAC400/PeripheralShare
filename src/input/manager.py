@@ -28,6 +28,7 @@ class InputManager(QObject):
         super().__init__()
         self.config = config
         self.logger = logging.getLogger(__name__)
+        self.is_active_device = True  # Only capture/send if active
         
         if not PYNPUT_AVAILABLE:
             self.logger.error("pynput is not available. Input functionality will be disabled.")
@@ -176,7 +177,7 @@ class InputManager(QObject):
     
     def _on_mouse_move(self, x, y):
         """Handle mouse move events."""
-        if not self.is_capturing or self.is_injecting:
+        if not self.is_capturing or self.is_injecting or not self.is_active_device:
             return
         
         # Throttle mouse events to prevent spam
@@ -197,7 +198,7 @@ class InputManager(QObject):
     
     def _on_mouse_click(self, x, y, button, pressed):
         """Handle mouse click events."""
-        if not self.is_capturing or self.is_injecting:
+        if not self.is_capturing or self.is_injecting or not self.is_active_device:
             return
             
         data = {
@@ -210,6 +211,8 @@ class InputManager(QObject):
     
     def _on_mouse_scroll(self, x, y, dx, dy):
         """Handle mouse scroll events."""
+        if not self.is_capturing or self.is_injecting or not self.is_active_device:
+            return
         if self.is_capturing:
             data = {
                 'x': x,
@@ -221,19 +224,21 @@ class InputManager(QObject):
     
     def _on_key_press(self, key):
         """Handle key press events."""
-        if self.is_capturing:
-            key_data = self._serialize_key(key)
-            if key_data:
-                data = {'key': key_data}
-                self.input_captured.emit('key_press', data)
+        if not self.is_capturing or not self.is_active_device:
+            return
+        key_data = self._serialize_key(key)
+        if key_data:
+            data = {'key': key_data}
+            self.input_captured.emit('key_press', data)
     
     def _on_key_release(self, key):
         """Handle key release events."""
-        if self.is_capturing:
-            key_data = self._serialize_key(key)
-            if key_data:
-                data = {'key': key_data}
-                self.input_captured.emit('key_release', data)
+        if not self.is_capturing or not self.is_active_device:
+            return
+        key_data = self._serialize_key(key)
+        if key_data:
+            data = {'key': key_data}
+            self.input_captured.emit('key_release', data)
     
     def _serialize_key(self, key) -> Optional[Dict[str, Any]]:
         """Serialize key object for transmission."""
@@ -269,4 +274,11 @@ class InputManager(QObject):
     def cleanup(self):
         """Cleanup input manager resources."""
         self.stop_capture()
-        self.logger.info("Input manager cleanup completed") 
+        self.logger.info("Input manager cleanup completed")
+
+    def set_active(self, active: bool):
+        self.is_active_device = active
+        if not active:
+            self.stop_capture()
+        else:
+            self.start_capture() 
