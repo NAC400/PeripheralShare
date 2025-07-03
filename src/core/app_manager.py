@@ -19,7 +19,7 @@ class AppManager(QObject):
         self.is_server_mode = False
         self.logger.info("AppManager initialized")
     
-    def start_as_server(self, port=12345):
+    def start_as_server(self, port=8888):
         """Start the application as a server."""
         try:
             self.logger.info("Starting seamless desktop server...")
@@ -63,7 +63,7 @@ class AppManager(QObject):
         self.connection_status_changed.emit(False, "Server stopped")
         self.logger.info("Server stopped")
     
-    def connect_to_server(self, host, port=12345):
+    def connect_to_server(self, host, port=8888):
         """Connect to a server as a client."""
         try:
             self.logger.info(f"Connecting to server at {host}:{port}...")

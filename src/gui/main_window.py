@@ -12,6 +12,7 @@ class MainWindow(QWidget):
         self.app_manager = app_manager
         self.config = config
         self.is_server_running = False
+        self.is_client_connected = False
         self.init_ui()
         self.setup_connections()
         
@@ -200,7 +201,7 @@ class MainWindow(QWidget):
         
         self.port_spinbox = QSpinBox()
         self.port_spinbox.setRange(1024, 65535)
-        self.port_spinbox.setValue(self.config.get('network.port', 12345))
+        self.port_spinbox.setValue(self.config.get('network.port', 8888))
         network_layout.addRow("Port:", self.port_spinbox)
         
         self.encryption_checkbox = QCheckBox("Enable Encryption")
@@ -345,29 +346,49 @@ class MainWindow(QWidget):
         
     @pyqtSlot()
     def connect_to_server(self):
-        server_ip = self.server_ip_input.text().strip()
-        if not server_ip:
-            self.log_message("Please enter server IP address")
-            return
+        if not self.is_client_connected:
+            # Currently disconnected, attempt to connect
+            server_ip = self.server_ip_input.text().strip()
+            if not server_ip:
+                self.log_message("Please enter server IP address")
+                return
+                
+            self.log_message(f"Connecting to server at {server_ip}...")
+            port = self.port_spinbox.value()
             
-        self.log_message(f"Connecting to server at {server_ip}...")
-        port = self.port_spinbox.value()
-        
-        # Disable button during connection attempt
-        self.connect_btn.setEnabled(False)
-        self.connect_btn.setText("Connecting...")
-        
-        success = self.app_manager.connect_to_server(server_ip, port)
-        
-        # Re-enable button
-        self.connect_btn.setEnabled(True)
-        
-        if success:
-            self.connect_btn.setText("Disconnect")
-            self.log_message(f"Successfully connected to {server_ip}:{port}")
+            # Disable button during connection attempt
+            self.connect_btn.setEnabled(False)
+            self.connect_btn.setText("Connecting...")
+            
+            success = self.app_manager.connect_to_server(server_ip, port)
+            
+            # Re-enable button
+            self.connect_btn.setEnabled(True)
+            
+            if success:
+                self.is_client_connected = True
+                self.connect_btn.setText("Disconnect")
+                self.connect_btn.setStyleSheet("background-color: #ff6b6b;")
+                self.connection_status.setText("Connected")
+                self.connection_status.setStyleSheet("color: green; font-weight: bold;")
+                self.network_indicator.setStyleSheet("color: green; font-size: 16px;")
+                self.status_label.setText(f"Connected to {server_ip}:{port}")
+                self.log_message(f"Successfully connected to {server_ip}:{port}")
+            else:
+                self.connect_btn.setText("Connect")
+                self.log_message(f"Failed to connect to {server_ip}:{port}")
         else:
+            # Currently connected, disconnect
+            self.log_message("Disconnecting from server...")
+            self.app_manager.disconnect_from_server()
+            self.is_client_connected = False
             self.connect_btn.setText("Connect")
-            self.log_message(f"Failed to connect to {server_ip}:{port}")
+            self.connect_btn.setStyleSheet("")
+            self.connection_status.setText("Disconnected")
+            self.connection_status.setStyleSheet("color: red; font-weight: bold;")
+            self.network_indicator.setStyleSheet("color: red; font-size: 16px;")
+            self.status_label.setText("Ready")
+            self.log_message("Disconnected from server")
         
     @pyqtSlot()
     def refresh_devices(self):
@@ -407,10 +428,20 @@ class MainWindow(QWidget):
             self.connection_status.setText("Connected")
             self.connection_status.setStyleSheet("color: green; font-weight: bold;")
             self.network_indicator.setStyleSheet("color: green; font-size: 16px;")
+            # Update client connection state if this is a client connection
+            if not self.is_server_running and not self.is_client_connected:
+                self.is_client_connected = True
+                self.connect_btn.setText("Disconnect")
+                self.connect_btn.setStyleSheet("background-color: #ff6b6b;")
         else:
             self.connection_status.setText("Disconnected")
             self.connection_status.setStyleSheet("color: red; font-weight: bold;")
             self.network_indicator.setStyleSheet("color: red; font-size: 16px;")
+            # Update client connection state
+            if self.is_client_connected:
+                self.is_client_connected = False
+                self.connect_btn.setText("Connect")
+                self.connect_btn.setStyleSheet("")
             
         self.status_label.setText(message)
         self.log_message(message) 

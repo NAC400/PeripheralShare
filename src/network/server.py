@@ -18,7 +18,7 @@ class PeripheralServer(QObject):
     client_disconnected = pyqtSignal(dict) # client_info
     data_received = pyqtSignal(dict)       # message
     
-    def __init__(self, config, port: int = 12345):
+    def __init__(self, config, port: int = 8888):
         """Initialize the server."""
         super().__init__()
         self.config = config
@@ -46,6 +46,18 @@ class PeripheralServer(QObject):
             self.logger.info(f"Server started on port {self.port}")
             return True
             
+        except OSError as e:
+            # Windows socket permission errors
+            if e.errno == 10013:  # WinError 10013
+                self.logger.error(f"Socket permission denied (WinError 10013) on port {self.port}")
+                self.logger.error("Try running as administrator or use a different port")
+                self.logger.error("Run 'python troubleshoot_network.py' for detailed diagnosis")
+            elif e.errno == 10048:  # Address already in use
+                self.logger.error(f"Port {self.port} is already in use")
+                self.logger.error("Try using a different port or kill the process using this port")
+            else:
+                self.logger.error(f"Socket error {e.errno}: {e}")
+            return False
         except Exception as e:
             self.logger.error(f"Failed to start server: {e}")
             return False

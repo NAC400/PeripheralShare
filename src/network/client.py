@@ -53,6 +53,22 @@ class PeripheralClient(QObject):
             self.logger.info(f"Connected to server at {host}:{port}")
             return True
             
+        except OSError as e:
+            # Windows socket permission errors
+            if e.errno == 10013:  # WinError 10013
+                self.logger.error(f"Socket permission denied (WinError 10013) connecting to {host}:{port}")
+                self.logger.error("This may be a firewall issue or the server is not accessible")
+                self.logger.error("Run 'python troubleshoot_network.py' for detailed diagnosis")
+            elif e.errno == 10061:  # Connection refused
+                self.logger.error(f"Connection refused to {host}:{port}")
+                self.logger.error("Server may not be running or port is incorrect")
+            elif e.errno == 10060:  # Connection timed out
+                self.logger.error(f"Connection timed out to {host}:{port}")
+                self.logger.error("Check if the server IP and port are correct")
+            else:
+                self.logger.error(f"Socket error {e.errno} connecting to {host}:{port}: {e}")
+            self.connected_status = False
+            return False
         except Exception as e:
             self.logger.error(f"Failed to connect to {host}:{port}: {e}")
             self.connected_status = False
