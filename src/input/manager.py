@@ -47,6 +47,13 @@ class InputManager(QObject):
         self.keyboard_enabled = config.get('input.keyboard_enabled', True)
         self.sensitivity = config.get('input.sensitivity', 1.0)
         
+        # Prevent feedback loops
+        self.is_injecting = False
+        self.last_mouse_pos = (0, 0)
+        self.last_mouse_time = 0
+        self.mouse_threshold = 5  # Minimum pixel movement to capture
+        self.mouse_throttle = 0.01  # Minimum time between mouse events
+        
         # Hotkeys
         self.hotkey_switch = config.get('input.hotkey_switch', 'ctrl+alt+s')
         self.hotkey_toggle = config.get('input.hotkey_toggle', 'ctrl+alt+t')
@@ -120,10 +127,15 @@ class InputManager(QObject):
             return
         
         try:
+            # Set injection flag to prevent feedback loops
+            self.is_injecting = True
+            
             if event_type == 'mouse_move':
                 x = data.get('x', 0) * self.sensitivity
                 y = data.get('y', 0) * self.sensitivity
                 self.mouse_controller.position = (x, y)
+                # Update last position to prevent echo
+                self.last_mouse_pos = (x, y)
             
             elif event_type == 'mouse_click':
                 button_name = data.get('button', 'left')
@@ -153,25 +165,48 @@ class InputManager(QObject):
                 if key:
                     self.keyboard_controller.release(key)
             
+            # Small delay to let injection complete before re-enabling capture
+            time.sleep(0.001)
+            
         except Exception as e:
             self.logger.error(f"Failed to inject input event {event_type}: {e}")
+        finally:
+            # Always clear injection flag
+            self.is_injecting = False
     
     def _on_mouse_move(self, x, y):
         """Handle mouse move events."""
-        if self.is_capturing:
+        if not self.is_capturing or self.is_injecting:
+            return
+        
+        # Throttle mouse events to prevent spam
+        current_time = time.time()
+        if current_time - self.last_mouse_time < self.mouse_throttle:
+            return
+        
+        # Check if movement is significant enough
+        last_x, last_y = self.last_mouse_pos
+        distance = ((x - last_x) ** 2 + (y - last_y) ** 2) ** 0.5
+        
+        if distance >= self.mouse_threshold:
+            self.last_mouse_time = current_time
+            self.last_mouse_pos = (x, y)
+            
             data = {'x': x, 'y': y}
             self.input_captured.emit('mouse_move', data)
     
     def _on_mouse_click(self, x, y, button, pressed):
         """Handle mouse click events."""
-        if self.is_capturing:
-            data = {
-                'x': x,
-                'y': y,
-                'button': button.name,
-                'pressed': pressed
-            }
-            self.input_captured.emit('mouse_click', data)
+        if not self.is_capturing or self.is_injecting:
+            return
+            
+        data = {
+            'x': x,
+            'y': y,
+            'button': button.name,
+            'pressed': pressed
+        }
+        self.input_captured.emit('mouse_click', data)
     
     def _on_mouse_scroll(self, x, y, dx, dy):
         """Handle mouse scroll events."""
