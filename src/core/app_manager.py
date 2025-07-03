@@ -4,6 +4,15 @@ from src.network.server import PeripheralServer
 from src.network.client import PeripheralClient
 from src.input.manager import InputManager
 from src.core.desktop_manager import SeamlessDesktopManager
+import platform
+try:
+    from screeninfo import get_monitors
+except ImportError:
+    get_monitors = None
+try:
+    from pynput.mouse import Controller as MouseController
+except ImportError:
+    MouseController = None
 
 class AppManager(QObject):
     connection_status_changed = pyqtSignal(bool, str)
@@ -128,10 +137,12 @@ class AppManager(QObject):
         try:
             msg_type = message.get('type')
             if msg_type == 'handoff':
+                edge = message.get('edge')
+                self.logger.info(f"Received handoff: edge={edge}, mouse_pos={message.get('mouse_pos')}")
                 # Become inactive, stop capturing input, but DO NOT disconnect
                 self.is_active_device = False
                 self.input_manager.stop_capture()
-                self.logger.info("Received handoff: now inactive, connection still open.")
+                self.logger.info("Now inactive, connection still open.")
             elif msg_type == 'input' and self.is_active_device:
                 event_type = message.get('event_type')
                 data = message.get('data', {})
@@ -154,11 +165,14 @@ class AppManager(QObject):
         try:
             msg_type = message.get('type')
             if msg_type == 'handoff':
-                # Become active, start capturing input
+                edge = message.get('edge')
+                self.logger.info(f"Received handoff: edge={edge}, mouse_pos={message.get('mouse_pos')}")
+                # Become active, start capturing input, warp mouse
                 self.is_active_device = True
+                self._warp_mouse_to_edge(edge)
                 if self.input_manager.start_capture():
                     self.input_manager.input_captured.connect(self.send_input_to_server)
-                self.logger.info("Received handoff: now active, capturing input.")
+                self.logger.info("Now active, capturing input.")
             elif msg_type == 'input' and self.is_active_device:
                 event_type = message.get('event_type')
                 data = message.get('data', {})
@@ -172,17 +186,26 @@ class AppManager(QObject):
         """Handle edge reached event for handoff."""
         if self.is_active_device:
             self.logger.info(f"Edge reached: {edge}. Sending handoff.")
+            # Get current mouse position
+            mouse_pos = None
+            if MouseController:
+                try:
+                    mouse = MouseController()
+                    mouse_pos = mouse.position
+                except Exception as e:
+                    self.logger.warning(f"Could not get mouse position: {e}")
+            handoff_msg = {'type': 'handoff', 'edge': edge, 'mouse_pos': mouse_pos}
             # Send handoff to the other device
             if self.is_server_mode and self.server:
-                self.server.broadcast_message({'type': 'handoff', 'edge': edge})
+                self.server.broadcast_message(handoff_msg)
                 self.is_active_device = False
                 self.input_manager.stop_capture()
-                self.logger.info(f"Sent handoff to client (edge: {edge}). Now inactive, but connection remains open.")
+                self.logger.info(f"Sent handoff to client (edge: {edge}, pos: {mouse_pos}). Now inactive, but connection remains open.")
             elif not self.is_server_mode and self.client:
-                self.client.send_message({'type': 'handoff', 'edge': edge})
+                self.client.send_message(handoff_msg)
                 self.is_active_device = False
                 self.input_manager.stop_capture()
-                self.logger.info(f"Sent handoff to server (edge: {edge}). Now inactive, but connection remains open.")
+                self.logger.info(f"Sent handoff to server (edge: {edge}, pos: {mouse_pos}). Now inactive, but connection remains open.")
     
     def _send_input_to_clients(self, event_type, data):
         if self.server and self.is_server_mode and self.is_active_device:
@@ -214,4 +237,34 @@ class AppManager(QObject):
     def get_connected_devices(self):
         if self.server:
             return self.server.get_devices()
-        return {} 
+        return {}
+
+    def _warp_mouse_to_edge(self, edge):
+        if not MouseController:
+            self.logger.warning("pynput MouseController not available; cannot warp mouse.")
+            return
+        try:
+            mouse = MouseController()
+            # Default to first screen
+            screen = None
+            if get_monitors:
+                monitors = get_monitors()
+                if monitors:
+                    screen = monitors[0]
+            if not screen:
+                # Fallback: 1920x1080
+                screen = type('Screen', (), {'x': 0, 'y': 0, 'width': 1920, 'height': 1080})()
+            if edge == 'left':
+                pos = (screen.x + 1, screen.y + screen.height // 2)
+            elif edge == 'right':
+                pos = (screen.x + screen.width - 2, screen.y + screen.height // 2)
+            elif edge == 'top':
+                pos = (screen.x + screen.width // 2, screen.y + 1)
+            elif edge == 'bottom':
+                pos = (screen.x + screen.width // 2, screen.y + screen.height - 2)
+            else:
+                pos = (screen.x + 10, screen.y + 10)
+            mouse.position = pos
+            self.logger.info(f"Warped mouse to {pos} on edge {edge}")
+        except Exception as e:
+            self.logger.error(f"Failed to warp mouse: {e}") 

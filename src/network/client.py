@@ -171,16 +171,34 @@ class PeripheralClient(QObject):
             'screen_count': 1,
             'screens': []
         }
-        if get_monitors:
-            screens = []
-            for m in get_monitors():
-                screens.append({
-                    'width': m.width,
-                    'height': m.height,
-                    'x': m.x,
-                    'y': m.y,
-                    'name': getattr(m, 'name', None)
-                })
-            info['screen_count'] = len(screens)
-            info['screens'] = screens
+        try:
+            if get_monitors:
+                screens = []
+                for m in get_monitors():
+                    screens.append({
+                        'width': m.width,
+                        'height': m.height,
+                        'x': m.x,
+                        'y': m.y,
+                        'name': getattr(m, 'name', None)
+                    })
+                if screens:
+                    info['screen_count'] = len(screens)
+                    info['screens'] = screens
+                else:
+                    self.logger.warning("screeninfo.get_monitors() returned no screens!")
+            else:
+                self.logger.warning("screeninfo not available; sending default screen info.")
+        except Exception as e:
+            self.logger.error(f"Error getting screen info: {e}")
+        # Always send at least one screen
+        if not info['screens']:
+            info['screens'] = [{
+                'width': 800,
+                'height': 600,
+                'x': 0,
+                'y': 0,
+                'name': 'Default'
+            }]
+            info['screen_count'] = 1
         self.send_message(info) 

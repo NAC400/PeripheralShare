@@ -310,6 +310,9 @@ class MainWindow(QWidget):
         # Connect app manager signals
         if hasattr(self.app_manager, 'connection_status_changed'):
             self.app_manager.connection_status_changed.connect(self.update_connection_status)
+        # Auto-refresh layout tab when device info is received
+        if hasattr(self.app_manager, 'server') and self.app_manager.server:
+            self.app_manager.server.data_received.connect(self._on_server_data_received)
             
     @pyqtSlot()
     def toggle_server(self):
@@ -452,4 +455,8 @@ class MainWindow(QWidget):
             screens = info.get('screens', [])
             self.device_list.addItem(f"{name} ({device_id}) - {len(screens)} screen(s)")
             for i, screen in enumerate(screens):
-                self.device_list.addItem(f"    Screen {i+1}: {screen['width']}x{screen['height']} at ({screen['x']},{screen['y']})") 
+                self.device_list.addItem(f"    Screen {i+1}: {screen['width']}x{screen['height']} at ({screen['x']},{screen['y']})")
+
+    def _on_server_data_received(self, message):
+        if message.get('type') == 'device_info':
+            self.refresh_device_list() 
