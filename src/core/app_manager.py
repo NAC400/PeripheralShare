@@ -128,10 +128,10 @@ class AppManager(QObject):
         try:
             msg_type = message.get('type')
             if msg_type == 'handoff':
-                # Become inactive, stop capturing input
+                # Become inactive, stop capturing input, but DO NOT disconnect
                 self.is_active_device = False
                 self.input_manager.stop_capture()
-                self.logger.info("Received handoff: now inactive")
+                self.logger.info("Received handoff: now inactive, connection still open.")
             elif msg_type == 'input' and self.is_active_device:
                 event_type = message.get('event_type')
                 data = message.get('data', {})
@@ -158,7 +158,7 @@ class AppManager(QObject):
                 self.is_active_device = True
                 if self.input_manager.start_capture():
                     self.input_manager.input_captured.connect(self.send_input_to_server)
-                self.logger.info("Received handoff: now active")
+                self.logger.info("Received handoff: now active, capturing input.")
             elif msg_type == 'input' and self.is_active_device:
                 event_type = message.get('event_type')
                 data = message.get('data', {})
@@ -171,17 +171,18 @@ class AppManager(QObject):
     def _on_edge_reached(self, edge):
         """Handle edge reached event for handoff."""
         if self.is_active_device:
+            self.logger.info(f"Edge reached: {edge}. Sending handoff.")
             # Send handoff to the other device
             if self.is_server_mode and self.server:
                 self.server.broadcast_message({'type': 'handoff', 'edge': edge})
                 self.is_active_device = False
                 self.input_manager.stop_capture()
-                self.logger.info(f"Sent handoff to client (edge: {edge})")
+                self.logger.info(f"Sent handoff to client (edge: {edge}). Now inactive, but connection remains open.")
             elif not self.is_server_mode and self.client:
                 self.client.send_message({'type': 'handoff', 'edge': edge})
                 self.is_active_device = False
                 self.input_manager.stop_capture()
-                self.logger.info(f"Sent handoff to server (edge: {edge})")
+                self.logger.info(f"Sent handoff to server (edge: {edge}). Now inactive, but connection remains open.")
     
     def _send_input_to_clients(self, event_type, data):
         if self.server and self.is_server_mode and self.is_active_device:
