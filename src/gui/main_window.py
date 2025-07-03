@@ -136,21 +136,11 @@ class MainWindow(QWidget):
         # Edge Detection Settings
         edge_group = QGroupBox("Seamless Desktop Settings")
         edge_layout = QFormLayout()
-        
         self.edge_sensitivity = QSpinBox()
         self.edge_sensitivity.setRange(1, 20)
         self.edge_sensitivity.setValue(5)
         self.edge_sensitivity.setSuffix(" pixels")
         edge_layout.addRow("Edge Sensitivity:", self.edge_sensitivity)
-        
-        self.device_layout_combo = QComboBox()
-        self.device_layout_combo.addItems([
-            "Laptop ← Main → Secondary", 
-            "Secondary ← Main → Laptop",
-            "Main ← Laptop → Secondary"
-        ])
-        edge_layout.addRow("Device Layout:", self.device_layout_combo)
-        
         edge_group.setLayout(edge_layout)
         layout.addWidget(edge_group)
         

@@ -9,6 +9,11 @@ import json
 import logging
 from typing import Dict, List, Optional
 from PyQt6.QtCore import QObject, pyqtSignal
+import platform
+try:
+    from screeninfo import get_monitors
+except ImportError:
+    get_monitors = None
 
 class PeripheralServer(QObject):
     """Server for handling client connections."""
@@ -38,12 +43,12 @@ class PeripheralServer(QObject):
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.server_socket.bind(('0.0.0.0', self.port))
             self.server_socket.listen(5)
-            
+            # Register own device info
+            self.register_own_device()
             self.running = True
             self._accept_thread = threading.Thread(target=self._accept_connections)
             self._accept_thread.daemon = True
             self._accept_thread.start()
-            
             self.logger.info(f"Server started on port {self.port}")
             return True
             
@@ -184,3 +189,25 @@ class PeripheralServer(QObject):
     
     def get_devices(self):
         return self.devices 
+    
+    def register_own_device(self):
+        info = {
+            'type': 'device_info',
+            'hostname': platform.node(),
+            'platform': platform.system(),
+            'screen_count': 1,
+            'screens': []
+        }
+        if get_monitors:
+            screens = []
+            for m in get_monitors():
+                screens.append({
+                    'width': m.width,
+                    'height': m.height,
+                    'x': m.x,
+                    'y': m.y,
+                    'name': getattr(m, 'name', None)
+                })
+            info['screen_count'] = len(screens)
+            info['screens'] = screens
+        self.devices['server'] = info 
