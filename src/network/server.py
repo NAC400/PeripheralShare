@@ -29,6 +29,7 @@ class PeripheralServer(QObject):
         self.clients = {}
         self.running = False
         self._accept_thread = None
+        self.devices = {}  # device_id -> info
     
     def start(self) -> bool:
         """Start the server."""
@@ -134,6 +135,10 @@ class PeripheralServer(QObject):
                     if line:  # Skip empty lines
                         try:
                             message = json.loads(line)
+                            # Handle device_info messages
+                            if message.get('type') == 'device_info':
+                                self.logger.info(f"Registered device info from {client_id}: {message}")
+                                self.devices[client_id] = message
                             self.data_received.emit(message)
                         except json.JSONDecodeError as e:
                             self.logger.error(f"Invalid JSON from client {client_id}: {line[:100]}... Error: {e}")
@@ -175,4 +180,7 @@ class PeripheralServer(QObject):
             'port': self.port,
             'running': self.running,
             'client_count': len(self.clients)
-        } 
+        }
+    
+    def get_devices(self):
+        return self.devices 

@@ -9,6 +9,11 @@ import json
 import logging
 from typing import Dict, Optional
 from PyQt6.QtCore import QObject, pyqtSignal
+import platform
+try:
+    from screeninfo import get_monitors
+except ImportError:
+    get_monitors = None
 
 class PeripheralClient(QObject):
     """Client for connecting to PeripheralShare server."""
@@ -38,6 +43,9 @@ class PeripheralClient(QObject):
             self.socket.connect((host, port))
             self.server_address = (host, port)
             self.connected_status = True
+            
+            # Send device info after connecting
+            self.send_device_info()
             
             # Start receive thread
             self._receive_thread = threading.Thread(target=self._receive_messages)
@@ -152,4 +160,27 @@ class PeripheralClient(QObject):
         return {
             'connected': self.connected_status,
             'server_address': self.server_address
-        } 
+        }
+    
+    def send_device_info(self):
+        """Send device info to server after connecting."""
+        info = {
+            'type': 'device_info',
+            'hostname': platform.node(),
+            'platform': platform.system(),
+            'screen_count': 1,
+            'screens': []
+        }
+        if get_monitors:
+            screens = []
+            for m in get_monitors():
+                screens.append({
+                    'width': m.width,
+                    'height': m.height,
+                    'x': m.x,
+                    'y': m.y,
+                    'name': getattr(m, 'name', None)
+                })
+            info['screen_count'] = len(screens)
+            info['screens'] = screens
+        self.send_message(info) 

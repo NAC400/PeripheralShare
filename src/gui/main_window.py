@@ -46,6 +46,10 @@ class MainWindow(QWidget):
         logs_tab = self.create_logs_tab()
         tab_widget.addTab(logs_tab, "Logs")
         
+        # Layout Tab
+        layout_tab = self.create_layout_tab()
+        tab_widget.addTab(layout_tab, "Layout")
+        
         main_layout.addWidget(tab_widget)
         
         # Status bar
@@ -280,6 +284,18 @@ class MainWindow(QWidget):
         logs_widget.setLayout(layout)
         return logs_widget
         
+    def create_layout_tab(self):
+        layout_widget = QWidget()
+        layout = QVBoxLayout()
+        self.device_list = QListWidget()
+        layout.addWidget(QLabel("Connected Devices and Screens:"))
+        layout.addWidget(self.device_list)
+        refresh_btn = QPushButton("Refresh Device List")
+        refresh_btn.clicked.connect(self.refresh_device_list)
+        layout.addWidget(refresh_btn)
+        layout_widget.setLayout(layout)
+        return layout_widget
+
     def create_status_bar(self):
         status_widget = QWidget()
         status_layout = QHBoxLayout()
@@ -436,4 +452,14 @@ class MainWindow(QWidget):
             self.network_indicator.setStyleSheet("color: red; font-size: 16px;")
             
         self.status_label.setText(message)
-        self.log_message(message) 
+        self.log_message(message)
+
+    def refresh_device_list(self):
+        self.device_list.clear()
+        devices = self.app_manager.get_connected_devices()
+        for device_id, info in devices.items():
+            name = info.get('hostname', device_id)
+            screens = info.get('screens', [])
+            self.device_list.addItem(f"{name} ({device_id}) - {len(screens)} screen(s)")
+            for i, screen in enumerate(screens):
+                self.device_list.addItem(f"    Screen {i+1}: {screen['width']}x{screen['height']} at ({screen['x']},{screen['y']})") 

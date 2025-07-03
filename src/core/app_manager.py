@@ -209,4 +209,9 @@ class AppManager(QObject):
             self.stop_server()
         if self.client:
             self.disconnect_from_server()
-        self.logger.info("AppManager shutdown complete") 
+        self.logger.info("AppManager shutdown complete")
+    
+    def get_connected_devices(self):
+        if self.server:
+            return self.server.get_devices()
+        return {} 
