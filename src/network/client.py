@@ -94,7 +94,8 @@ class PeripheralClient(QObject):
             return
         
         try:
-            data = json.dumps(message).encode('utf-8')
+            # Add newline delimiter for message framing
+            data = (json.dumps(message) + '\n').encode('utf-8')
             self.socket.send(data)
         except Exception as e:
             self.logger.error(f"Failed to send message: {e}")
@@ -102,17 +103,28 @@ class PeripheralClient(QObject):
     
     def _receive_messages(self):
         """Receive messages from server."""
+        buffer = ""
+        
         while self.connected_status and self.socket:
             try:
                 data = self.socket.recv(4096)
                 if not data:
                     break
                 
-                try:
-                    message = json.loads(data.decode('utf-8'))
-                    self.data_received.emit(message)
-                except json.JSONDecodeError:
-                    self.logger.error("Invalid JSON from server")
+                # Add received data to buffer
+                buffer += data.decode('utf-8')
+                
+                # Process complete messages (delimited by newlines)
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
+                    
+                    if line:  # Skip empty lines
+                        try:
+                            message = json.loads(line)
+                            self.data_received.emit(message)
+                        except json.JSONDecodeError as e:
+                            self.logger.error(f"Invalid JSON from server: {line[:100]}... Error: {e}")
                     
             except Exception as e:
                 if self.connected_status:

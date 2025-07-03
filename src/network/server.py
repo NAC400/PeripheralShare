@@ -115,6 +115,7 @@ class PeripheralServer(QObject):
             return
         
         client_sock = client_info['socket']
+        buffer = ""
         
         try:
             while self.running and client_id in self.clients:
@@ -122,11 +123,20 @@ class PeripheralServer(QObject):
                 if not data:
                     break
                 
-                try:
-                    message = json.loads(data.decode('utf-8'))
-                    self.data_received.emit(message)
-                except json.JSONDecodeError:
-                    self.logger.error(f"Invalid JSON from client {client_id}")
+                # Add received data to buffer
+                buffer += data.decode('utf-8')
+                
+                # Process complete messages (delimited by newlines)
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
+                    
+                    if line:  # Skip empty lines
+                        try:
+                            message = json.loads(line)
+                            self.data_received.emit(message)
+                        except json.JSONDecodeError as e:
+                            self.logger.error(f"Invalid JSON from client {client_id}: {line[:100]}... Error: {e}")
                     
         except Exception as e:
             self.logger.error(f"Error handling client {client_id}: {e}")
@@ -140,7 +150,8 @@ class PeripheralServer(QObject):
             return
         
         try:
-            data = json.dumps(message).encode('utf-8')
+            # Add newline delimiter for message framing
+            data = (json.dumps(message) + '\n').encode('utf-8')
             client_info['socket'].send(data)
         except Exception as e:
             self.logger.error(f"Failed to send to client {client_id}: {e}")

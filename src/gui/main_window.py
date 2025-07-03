@@ -424,24 +424,16 @@ class MainWindow(QWidget):
     @pyqtSlot(bool, str)
     def update_connection_status(self, connected, message):
         """Update connection status from app manager"""
+        # Only update the general status indicators, not button states
+        # Button states are managed by their respective action methods
         if connected:
             self.connection_status.setText("Connected")
             self.connection_status.setStyleSheet("color: green; font-weight: bold;")
             self.network_indicator.setStyleSheet("color: green; font-size: 16px;")
-            # Update client connection state if this is a client connection
-            if not self.is_server_running and not self.is_client_connected:
-                self.is_client_connected = True
-                self.connect_btn.setText("Disconnect")
-                self.connect_btn.setStyleSheet("background-color: #ff6b6b;")
         else:
             self.connection_status.setText("Disconnected")
             self.connection_status.setStyleSheet("color: red; font-weight: bold;")
             self.network_indicator.setStyleSheet("color: red; font-size: 16px;")
-            # Update client connection state
-            if self.is_client_connected:
-                self.is_client_connected = False
-                self.connect_btn.setText("Connect")
-                self.connect_btn.setStyleSheet("")
             
         self.status_label.setText(message)
         self.log_message(message) 
