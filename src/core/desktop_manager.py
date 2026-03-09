@@ -17,6 +17,7 @@ class SeamlessDesktopManager(QObject):
         self.logger = logging.getLogger(__name__)
         self.mouse_listener = None
         self.edge_threshold = config.get('input.edge_threshold', 5)
+        self.remote_side = (config.get('layout.remote_side', 'right') or 'right').lower()
 
         # Determine the full virtual desktop bounds to support multi‑monitor setups
         self.screen_left = 0
@@ -48,16 +49,16 @@ class SeamlessDesktopManager(QObject):
         self.mouse_listener.start()
 
     def _on_mouse_move(self, x, y):
-        # Emit signal if mouse is at edge of the virtual desktop
-        if x <= self.screen_left + self.edge_threshold:
-            self.logger.info("Mouse at left edge")
+        # Emit signal only for the edge where the remote display is configured.
+        if self.remote_side == 'left' and x <= self.screen_left + self.edge_threshold:
+            self.logger.info("Mouse at left edge (remote_side=left)")
             self.edge_reached.emit('left')
-        elif x >= self.screen_right - self.edge_threshold:
-            self.logger.info("Mouse at right edge")
+        elif self.remote_side == 'right' and x >= self.screen_right - self.edge_threshold:
+            self.logger.info("Mouse at right edge (remote_side=right)")
             self.edge_reached.emit('right')
-        elif y <= self.screen_top + self.edge_threshold:
-            self.logger.info("Mouse at top edge")
+        elif self.remote_side == 'top' and y <= self.screen_top + self.edge_threshold:
+            self.logger.info("Mouse at top edge (remote_side=top)")
             self.edge_reached.emit('top')
-        elif y >= self.screen_bottom - self.edge_threshold:
-            self.logger.info("Mouse at bottom edge")
+        elif self.remote_side == 'bottom' and y >= self.screen_bottom - self.edge_threshold:
+            self.logger.info("Mouse at bottom edge (remote_side=bottom)")
             self.edge_reached.emit('bottom')

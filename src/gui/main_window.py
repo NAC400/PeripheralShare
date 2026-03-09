@@ -219,6 +219,20 @@ class MainWindow(QWidget):
         
         input_group.setLayout(input_layout)
         layout.addWidget(input_group)
+
+        # Layout / Screen Position Settings
+        layout_group = QGroupBox("Layout")
+        layout_form = QFormLayout()
+        self.remote_side_combo = QComboBox()
+        self.remote_side_combo.addItems(["left", "right", "top", "bottom"])
+        current_side = self.config.get('layout.remote_side', 'right')
+        index = self.remote_side_combo.findText(current_side, Qt.MatchFixedString)
+        if index < 0:
+            index = 1  # default to "right"
+        self.remote_side_combo.setCurrentIndex(index)
+        layout_form.addRow("Remote screen position:", self.remote_side_combo)
+        layout_group.setLayout(layout_form)
+        layout.addWidget(layout_group)
         
         # Audio Settings
         audio_group = QGroupBox("Audio Settings")
@@ -424,8 +438,26 @@ class MainWindow(QWidget):
             
     @pyqtSlot()
     def save_settings(self):
+        # Persist and apply settings from the Settings tab
+        # Network port
+        port = self.port_spinbox.value()
+        self.config.set('network.port', port)
+        # Remote layout side
+        if hasattr(self, 'remote_side_combo'):
+            side = self.remote_side_combo.currentText()
+            self.config.set('layout.remote_side', side)
+            # Update runtime desktop manager so edge detection follows the UI
+            try:
+                self.app_manager.desktop_manager.remote_side = side
+            except Exception:
+                pass
+        # Attempt to save configuration to disk (best-effort)
+        try:
+            if hasattr(self.config, 'save'):
+                self.config.save()
+        except Exception:
+            pass
         self.log_message("Settings saved")
-        # TODO: Save settings to config file
         
     @pyqtSlot()
     def clear_logs(self):

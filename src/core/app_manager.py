@@ -46,8 +46,9 @@ class AppManager(QObject):
             self.server.client_disconnected.connect(self._on_client_disconnected)
             self.server.data_received.connect(self._on_server_data_received)
             
-            # Start input capture so this machine can act as an input source when needed
-            if self.input_manager.start_capture():
+            # Start input capture so this machine can act as an input source when needed.
+            # Initially we DO NOT suppress local events – this machine controls itself.
+            if self.input_manager.start_capture(suppress=False):
                 self.logger.info("Input capture started")
                 self.input_manager.input_captured.connect(self._send_input_to_clients)
             else:
@@ -150,6 +151,8 @@ class AppManager(QObject):
                 # Server received a handoff from client: client is now the input source.
                 self.send_input_to_remote = False
                 self.is_active_device = True
+                # Ensure local events are not suppressed while we are only a target.
+                self.input_manager.update_suppression(False)
                 self.logger.info("Client took control; server will inject received input.")
             elif msg_type == 'input' and self.is_active_device:
                 event_type = message.get('event_type')
@@ -179,6 +182,7 @@ class AppManager(QObject):
                 # Client becomes the target and should inject received input.
                 self.send_input_to_remote = False
                 self.is_active_device = True
+                self.input_manager.update_suppression(False)
                 self._warp_mouse_to_edge(edge)
                 self.logger.info("Client now target; will inject received input.")
             elif msg_type == 'input' and self.is_active_device:
@@ -208,16 +212,20 @@ class AppManager(QObject):
                 self.logger.info("Preparing to send handoff to client...")
                 try:
                     self.server.broadcast_message(handoff_msg)
-                    # Keep capturing on the server; switch to sending input to remote.
+                    # Keep capturing on the server; switch to sending input to remote
+                    # and suppress local OS handling so control is not mirrored.
                     self.send_input_to_remote = True
-                    self.logger.info(f"Sent handoff to client (edge: {edge}, pos: {mouse_pos}). Server remains input source for remote.")
+                    self.input_manager.update_suppression(True)
+                    self.logger.info(f"Sent handoff to client (edge: {edge}, pos: {mouse_pos}). Server now controls remote only.")
                 except Exception as e:
                     self.logger.error(f"Failed to send handoff: {e}")
             elif not self.is_server_mode and self.client:
                 self.client.send_message(handoff_msg)
-                # Keep capturing on the client; switch to sending input to remote.
+                # Keep capturing on the client; switch to sending input to remote
+                # and suppress local OS handling so control is not mirrored.
                 self.send_input_to_remote = True
-                self.logger.info(f"Sent handoff to server (edge: {edge}, pos: {mouse_pos}). Client remains input source for remote.")
+                self.input_manager.update_suppression(True)
+                self.logger.info(f"Sent handoff to server (edge: {edge}, pos: {mouse_pos}). Client now controls remote only.")
     
     def _send_input_to_clients(self, event_type, data):
         if self.server and self.is_server_mode and self.is_active_device and self.send_input_to_remote:
@@ -244,6 +252,11 @@ class AppManager(QObject):
             self.stop_server()
         if self.client:
             self.disconnect_from_server()
+        # Always restore local input behavior on shutdown
+        try:
+            self.input_manager.update_suppression(False)
+        except Exception:
+            pass
         self.logger.info("AppManager shutdown complete")
     
     def get_connected_devices(self):

@@ -55,6 +55,11 @@ class InputManager(QObject):
         self.mouse_threshold = 5  # Minimum pixel movement to capture
         self.mouse_throttle = 0.01  # Minimum time between mouse events
         self.send_relative_mouse = config.get('input.send_relative_mouse', True)
+
+        # Suppression: when acting as remote input source, we can optionally
+        # suppress local OS handling so control is not mirrored.
+        self._current_suppress = False
+        self._preferred_remote_suppress = config.get('input.suppress_local_on_remote', True)
         
         # Hotkeys
         self.hotkey_switch = config.get('input.hotkey_switch', 'ctrl+alt+s')
@@ -66,8 +71,12 @@ class InputManager(QObject):
         
         self.logger.info("Input manager initialized")
     
-    def start_capture(self) -> bool:
-        """Start capturing input events."""
+    def start_capture(self, suppress: Optional[bool] = None) -> bool:
+        """Start capturing input events.
+
+        If suppress is True (and supported by the platform), local OS handling
+        of events will be suppressed, so input only goes to the remote side.
+        """
         if not PYNPUT_AVAILABLE:
             self.logger.error("Cannot start capture: pynput not available")
             return False
@@ -78,21 +87,27 @@ class InputManager(QObject):
         
         try:
             self._stop_event.clear()
-            
+
+            if suppress is None:
+                suppress = self._current_suppress
+            self._current_suppress = bool(suppress)
+
             # Start mouse listener
             if self.mouse_enabled:
                 self.mouse_listener = MouseListener(
                     on_move=self._on_mouse_move,
                     on_click=self._on_mouse_click,
-                    on_scroll=self._on_mouse_scroll
+                    on_scroll=self._on_mouse_scroll,
+                    suppress=self._current_suppress,
                 )
                 self.mouse_listener.start()
-            
+
             # Start keyboard listener
             if self.keyboard_enabled:
                 self.keyboard_listener = KeyboardListener(
                     on_press=self._on_key_press,
-                    on_release=self._on_key_release
+                    on_release=self._on_key_release,
+                    suppress=self._current_suppress,
                 )
                 self.keyboard_listener.start()
             
@@ -122,6 +137,20 @@ class InputManager(QObject):
             
         except Exception as e:
             self.logger.error(f"Error stopping input capture: {e}")
+
+    def update_suppression(self, suppress_remote: bool):
+        """Update whether local events should be suppressed when acting as remote source."""
+        desired = bool(suppress_remote) and self._preferred_remote_suppress
+        if desired == self._current_suppress:
+            return
+
+        self.logger.info(f"Updating input suppression to {desired}")
+        was_capturing = self.is_capturing
+        if was_capturing:
+            self.stop_capture()
+        self._current_suppress = desired
+        if was_capturing:
+            self.start_capture(self._current_suppress)
     
     def inject_input(self, event_type: str, data: Dict[str, Any]):
         """Inject input event from remote device."""

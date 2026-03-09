@@ -66,6 +66,12 @@ class Config:
             "sample_rate": 44100,            # Audio sample rate
             "auto_switch": True              # Auto-switch audio devices
         },
+        "layout": {
+            # Physical position of the *remote* screen relative to this machine.
+            # For example, if your laptop is physically to the right of your PC,
+            # set this to "right" on the PC and "left" on the laptop.
+            "remote_side": "right"
+        },
         "file_transfer": {
             "enabled": True,                 # Enable file sharing
             "max_file_size": 100 * 1024 * 1024,  # 100MB max file size
@@ -159,8 +165,16 @@ class Config:
         config_ref[keys[-1]] = value
     
     def save(self):
-        """Save configuration (placeholder for now)."""
-        pass
+        """Save configuration to JSON file."""
+        try:
+            config_dir = self._get_config_directory()
+            config_dir.mkdir(parents=True, exist_ok=True)
+            config_path = config_dir / "config.json"
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(self._config, f, indent=2)
+            self.logger.info(f"Configuration saved to {config_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save configuration: {e}")
     
     @property
     def all(self):
