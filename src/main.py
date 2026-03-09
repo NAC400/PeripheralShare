@@ -35,8 +35,15 @@ class PeripheralShareApp:
         # Basic config fallback
         try:
             self.config = Config()
+            # Load and validate configuration so defaults (ports, input, etc.) are consistent
+            try:
+                self.config.load()
+                self.config.validate()
+            except Exception as e:
+                logging.basicConfig(level=logging.INFO)
+                logging.getLogger(__name__).warning(f"Running with in‑memory defaults, failed to load config: {e}")
             setup_logging(self.config.get('logging.level', 'INFO'))
-        except:
+        except Exception:
             logging.basicConfig(level=logging.INFO)
             self.config = None
             

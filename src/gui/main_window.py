@@ -310,7 +310,7 @@ class MainWindow(QWidget):
         # Connect app manager signals
         if hasattr(self.app_manager, 'connection_status_changed'):
             self.app_manager.connection_status_changed.connect(self.update_connection_status)
-        # Auto-refresh layout tab when device info is received
+        # Auto-refresh layout tab when device info is received (server may be created later)
         if hasattr(self.app_manager, 'server') and self.app_manager.server:
             self.app_manager.server.data_received.connect(self._on_server_data_received)
             
@@ -328,6 +328,13 @@ class MainWindow(QWidget):
         port = self.port_spinbox.value()
         success = self.app_manager.start_as_server(port)
         if success:
+            # Now that the server exists, listen for device_info updates to populate the layout tab
+            if hasattr(self.app_manager, 'server') and self.app_manager.server:
+                try:
+                    self.app_manager.server.data_received.connect(self._on_server_data_received)
+                except Exception:
+                    # If already connected, ignore
+                    pass
             self.is_server_running = True
             self.start_server_btn.setText("Stop Server")
             self.start_server_btn.setStyleSheet("background-color: #ff6b6b;")

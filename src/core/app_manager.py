@@ -197,10 +197,14 @@ class AppManager(QObject):
             handoff_msg = {'type': 'handoff', 'edge': edge, 'mouse_pos': mouse_pos}
             # Send handoff to the other device
             if self.is_server_mode and self.server:
-                self.server.broadcast_message(handoff_msg)
-                self.is_active_device = False
-                self.input_manager.stop_capture()
-                self.logger.info(f"Sent handoff to client (edge: {edge}, pos: {mouse_pos}). Now inactive, but connection remains open.")
+                self.logger.info("Preparing to send handoff to client...")
+                try:
+                    self.server.broadcast_message(handoff_msg)
+                    self.is_active_device = False
+                    self.input_manager.stop_capture()
+                    self.logger.info(f"Sent handoff to client (edge: {edge}, pos: {mouse_pos}). Now inactive, but connection remains open.")
+                except Exception as e:
+                    self.logger.error(f"Failed to send handoff: {e}")
             elif not self.is_server_mode and self.client:
                 self.client.send_message(handoff_msg)
                 self.is_active_device = False
