@@ -54,6 +54,7 @@ class InputManager(QObject):
         self.last_mouse_time = 0
         self.mouse_threshold = 5  # Minimum pixel movement to capture
         self.mouse_throttle = 0.01  # Minimum time between mouse events
+        self.send_relative_mouse = config.get('input.send_relative_mouse', True)
         
         # Hotkeys
         self.hotkey_switch = config.get('input.hotkey_switch', 'ctrl+alt+s')
@@ -132,11 +133,15 @@ class InputManager(QObject):
             self.is_injecting = True
             
             if event_type == 'mouse_move':
-                x = data.get('x', 0) * self.sensitivity
-                y = data.get('y', 0) * self.sensitivity
-                self.mouse_controller.position = (x, y)
-                # Update last position to prevent echo
-                self.last_mouse_pos = (x, y)
+                if self.send_relative_mouse and 'dx' in data and 'dy' in data:
+                    dx = data.get('dx', 0) * self.sensitivity
+                    dy = data.get('dy', 0) * self.sensitivity
+                    self.mouse_controller.move(dx, dy)
+                else:
+                    x = data.get('x', 0) * self.sensitivity
+                    y = data.get('y', 0) * self.sensitivity
+                    self.mouse_controller.position = (x, y)
+                    self.last_mouse_pos = (x, y)
             
             elif event_type == 'mouse_click':
                 button_name = data.get('button', 'left')
@@ -191,9 +196,14 @@ class InputManager(QObject):
         
         if distance >= self.mouse_threshold:
             self.last_mouse_time = current_time
+            dx = x - last_x
+            dy = y - last_y
             self.last_mouse_pos = (x, y)
             
-            data = {'x': x, 'y': y}
+            if self.send_relative_mouse:
+                data = {'dx': dx, 'dy': dy}
+            else:
+                data = {'x': x, 'y': y}
             self.input_captured.emit('mouse_move', data)
     
     def _on_mouse_click(self, x, y, button, pressed):

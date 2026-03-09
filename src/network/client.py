@@ -38,9 +38,12 @@ class PeripheralClient(QObject):
         """Connect to server."""
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.settimeout(10)  # 10 second timeout
+            # Use a connect timeout, but keep the socket in blocking mode afterwards.
+            # A read timeout here causes "disconnects" when the connection is simply idle.
+            self.socket.settimeout(10)
             
             self.socket.connect((host, port))
+            self.socket.settimeout(None)
             self.server_address = (host, port)
             self.connected_status = True
             
@@ -134,6 +137,9 @@ class PeripheralClient(QObject):
                         except json.JSONDecodeError as e:
                             self.logger.error(f"Invalid JSON from server: {line[:100]}... Error: {e}")
                     
+            except socket.timeout:
+                # Should not normally happen (we set blocking mode), but don't treat as disconnect.
+                continue
             except Exception as e:
                 if self.connected_status:
                     self.logger.error(f"Error receiving data: {e}")

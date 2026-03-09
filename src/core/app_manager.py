@@ -27,6 +27,7 @@ class AppManager(QObject):
         self.client = None
         self.is_server_mode = False
         self.is_active_device = True  # Only the active device captures/sends input
+        self.send_input_to_remote = False  # When True, this device is the input source for the remote
         self.logger.info("AppManager initialized")
     
     def start_as_server(self, port=8888):
@@ -45,19 +46,19 @@ class AppManager(QObject):
             self.server.client_disconnected.connect(self._on_client_disconnected)
             self.server.data_received.connect(self._on_server_data_received)
             
-            # Start input capture for sharing peripherals (only if active)
-            if self.is_active_device:
-                if self.input_manager.start_capture():
-                    self.logger.info("Input capture started")
-                    self.input_manager.input_captured.connect(self._send_input_to_clients)
-                else:
-                    self.logger.warning("Failed to start input capture")
+            # Start input capture so this machine can act as an input source when needed
+            if self.input_manager.start_capture():
+                self.logger.info("Input capture started")
+                self.input_manager.input_captured.connect(self._send_input_to_clients)
+            else:
+                self.logger.warning("Failed to start input capture")
             
             # Start edge tracking for seamless desktop
             self.desktop_manager.edge_reached.connect(self._on_edge_reached)
             self.desktop_manager.start_edge_tracking()
             
             self.is_server_mode = True
+            self.send_input_to_remote = False
             self.connection_status_changed.emit(True, f"Server running on port {port}")
             self.logger.info(f"Server started successfully on port {port}")
             print("Move mouse to edges to switch devices!")
@@ -100,11 +101,18 @@ class AppManager(QObject):
             success = self.client.connect(host, port)
             if success:
                 self.is_active_device = False  # Client starts as inactive
+                self.send_input_to_remote = False
                 self.connection_status_changed.emit(True, f"Connected to {host}:{port}")
                 self.logger.info(f"Successfully connected to {host}:{port}")
                 # Start edge tracking for seamless desktop
                 self.desktop_manager.edge_reached.connect(self._on_edge_reached)
                 self.desktop_manager.start_edge_tracking()
+                # Start input capture so this machine can become the input source after a handoff
+                if self.input_manager.start_capture():
+                    try:
+                        self.input_manager.input_captured.connect(self.send_input_to_server)
+                    except Exception:
+                        pass
                 return True
             else:
                 self.connection_status_changed.emit(False, f"Failed to connect to {host}:{port}")
@@ -139,10 +147,10 @@ class AppManager(QObject):
             if msg_type == 'handoff':
                 edge = message.get('edge')
                 self.logger.info(f"Received handoff: edge={edge}, mouse_pos={message.get('mouse_pos')}")
-                # Become inactive, stop capturing input, but DO NOT disconnect
-                self.is_active_device = False
-                self.input_manager.stop_capture()
-                self.logger.info("Now inactive, connection still open.")
+                # Server received a handoff from client: client is now the input source.
+                self.send_input_to_remote = False
+                self.is_active_device = True
+                self.logger.info("Client took control; server will inject received input.")
             elif msg_type == 'input' and self.is_active_device:
                 event_type = message.get('event_type')
                 data = message.get('data', {})
@@ -167,12 +175,12 @@ class AppManager(QObject):
             if msg_type == 'handoff':
                 edge = message.get('edge')
                 self.logger.info(f"Received handoff: edge={edge}, mouse_pos={message.get('mouse_pos')}")
-                # Become active, start capturing input, warp mouse
+                # Client received a handoff from server: server will be the input source.
+                # Client becomes the target and should inject received input.
+                self.send_input_to_remote = False
                 self.is_active_device = True
                 self._warp_mouse_to_edge(edge)
-                if self.input_manager.start_capture():
-                    self.input_manager.input_captured.connect(self.send_input_to_server)
-                self.logger.info("Now active, capturing input.")
+                self.logger.info("Client now target; will inject received input.")
             elif msg_type == 'input' and self.is_active_device:
                 event_type = message.get('event_type')
                 data = message.get('data', {})
@@ -200,19 +208,19 @@ class AppManager(QObject):
                 self.logger.info("Preparing to send handoff to client...")
                 try:
                     self.server.broadcast_message(handoff_msg)
-                    self.is_active_device = False
-                    self.input_manager.stop_capture()
-                    self.logger.info(f"Sent handoff to client (edge: {edge}, pos: {mouse_pos}). Now inactive, but connection remains open.")
+                    # Keep capturing on the server; switch to sending input to remote.
+                    self.send_input_to_remote = True
+                    self.logger.info(f"Sent handoff to client (edge: {edge}, pos: {mouse_pos}). Server remains input source for remote.")
                 except Exception as e:
                     self.logger.error(f"Failed to send handoff: {e}")
             elif not self.is_server_mode and self.client:
                 self.client.send_message(handoff_msg)
-                self.is_active_device = False
-                self.input_manager.stop_capture()
-                self.logger.info(f"Sent handoff to server (edge: {edge}, pos: {mouse_pos}). Now inactive, but connection remains open.")
+                # Keep capturing on the client; switch to sending input to remote.
+                self.send_input_to_remote = True
+                self.logger.info(f"Sent handoff to server (edge: {edge}, pos: {mouse_pos}). Client remains input source for remote.")
     
     def _send_input_to_clients(self, event_type, data):
-        if self.server and self.is_server_mode and self.is_active_device:
+        if self.server and self.is_server_mode and self.is_active_device and self.send_input_to_remote:
             message = {
                 'type': 'input',
                 'event_type': event_type,
@@ -222,7 +230,7 @@ class AppManager(QObject):
             self.logger.debug(f"Sent input to clients: {event_type}")
     
     def send_input_to_server(self, event_type, data):
-        if self.client and self.is_active_device:
+        if self.client and self.is_active_device and self.send_input_to_remote:
             message = {
                 'type': 'input',
                 'event_type': event_type,
